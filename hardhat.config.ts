@@ -64,7 +64,7 @@ const config: HardhatUserConfig = {
         mnemonic,
       },
       forking: {
-        url: createInfuraUrl('mainnet'),
+        url: createInfuraUrl("mainnet"),
       },
       chainId: chainIds.mainnet,
     },

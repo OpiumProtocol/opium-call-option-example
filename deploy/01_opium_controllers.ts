@@ -10,6 +10,9 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   await deploy("OptionController", {
     from: deployer,
     args: [opiumAddresses.registry],
+    libraries: {
+      LibPosition: opiumAddresses.libPosition,
+    },
     log: true,
   });
 

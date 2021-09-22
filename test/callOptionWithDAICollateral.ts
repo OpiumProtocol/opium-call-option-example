@@ -3,7 +3,12 @@ import { deployments, ethers } from "hardhat";
 import { JsonRpcSigner } from "@ethersproject/providers";
 import { expect } from "chai";
 // utils
-import { derivativeFactory, calculateLongTokenId, calculateShortTokenId } from "../utils/derivatives";
+import {
+  derivativeFactory,
+  calculateLongTokenId,
+  calculateShortTokenId,
+  getDerivativeHash,
+} from "../utils/derivatives";
 import { timeTravel, hardhatImpersonateAccount } from "../utils/hardhat";
 import { cast } from "../utils/bn";
 // types and constants
@@ -80,6 +85,12 @@ describe("Call Option example with DAI as a collateral", () => {
     optionSeller = ethers.provider.getSigner(daiRichEOA);
   });
 
+  it("sets the current derivative and should return a matching derivative hash", async () => {
+    await optionController.setDerivative(fullMarginOption.derivative);
+    const derivativeHash = await optionController["getDerivativeHash()"]();
+    expect(derivativeHash).to.be.eq(getDerivativeHash(fullMarginOption.derivative));
+  });
+
   it("should successfully create a full margin option", async () => {
     const { buyer } = namedSigners;
 
@@ -90,9 +101,7 @@ describe("Call Option example with DAI as a collateral", () => {
     await dai
       .connect(optionSeller)
       .approve(optionController.address, fullMarginOption.derivative.margin.mul(fullMarginOption.amount));
-    await optionController
-      .connect(optionSeller)
-      .create(fullMarginOption.derivative, fullMarginOption.amount, [buyer.address, daiRichEOA]);
+    await optionController.connect(optionSeller).create(fullMarginOption.amount, [buyer.address, daiRichEOA]);
 
     const buyerPositionsBalance = await tokenMinter["balanceOf(address)"](buyer.address);
     const buyerPositionsLongBalance = await tokenMinter["balanceOf(address,uint256)"](
@@ -162,13 +171,9 @@ describe("Call Option example with DAI as a collateral", () => {
     /**
      * @dev buyer and seller execute their LONG/SHORT positions
      */
-    await optionController
-      .connect(optionSeller)
-      .execute(fullMarginOption.shortTokenId, fullMarginOption.amount, fullMarginOption.derivative);
+    await optionController.connect(optionSeller).executeShort(fullMarginOption.amount);
 
-    await optionController
-      .connect(buyer)
-      .execute(fullMarginOption.longTokenId, fullMarginOption.amount, fullMarginOption.derivative);
+    await optionController.connect(buyer).executeLong(fullMarginOption.amount);
 
     const buyerBalanceAfter = await dai.balanceOf(buyer.address);
     const sellerBalanceAfter = await dai.balanceOf(daiRichEOA);

@@ -4,6 +4,7 @@ export const opiumAddresses = {
   tokenMinter: "0x212fe617ba1641cc84302687a4fbc83f13584a8b",
   oracleAggregator: "0xB69890912E40A7849fCA058bb118Cfe7d70932c4",
   tokenSpender: "0x8bd75f96EfA089aEcf6Ac4CD0B671e2428f4B2af",
+  libPosition: "0x56c54b408c44B12f6c9219C9c73Fcda4E783FC20",
 };
 
 export const zeroAddress = "0x0000000000000000000000000000000000000000";

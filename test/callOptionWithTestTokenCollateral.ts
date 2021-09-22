@@ -2,7 +2,12 @@
 import { deployments, ethers } from "hardhat";
 import { expect } from "chai";
 // utils
-import { derivativeFactory, calculateLongTokenId, calculateShortTokenId } from "../utils/derivatives";
+import {
+  derivativeFactory,
+  calculateLongTokenId,
+  calculateShortTokenId,
+  getDerivativeHash,
+} from "../utils/derivatives";
 import { timeTravel } from "../utils/hardhat";
 import { cast } from "../utils/bn";
 // types and constants
@@ -76,6 +81,12 @@ describe("Call Option example with TEST token as a collateral", () => {
     };
   });
 
+  it("sets the current derivative and should return a matching derivative hash", async () => {
+    await optionController.setDerivative(fullMarginOption.derivative);
+    const derivativeHash = await optionController["getDerivativeHash()"]();
+    expect(derivativeHash).to.be.eq(getDerivativeHash(fullMarginOption.derivative));
+  });
+
   it("should successfully create a full margin option", async () => {
     const { deployer, seller, buyer } = namedSigners;
 
@@ -86,9 +97,7 @@ describe("Call Option example with TEST token as a collateral", () => {
     await testToken
       .connect(deployer)
       .approve(optionController.address, fullMarginOption.derivative.margin.mul(fullMarginOption.amount));
-    await optionController
-      .connect(deployer)
-      .create(fullMarginOption.derivative, fullMarginOption.amount, [buyer.address, seller.address]);
+    await optionController.connect(deployer).create(fullMarginOption.amount, [buyer.address, seller.address]);
 
     const buyerPositionsBalance = await tokenMinter["balanceOf(address)"](buyer.address);
     const buyerPositionsLongBalance = await tokenMinter["balanceOf(address,uint256)"](
@@ -157,13 +166,9 @@ describe("Call Option example with TEST token as a collateral", () => {
     /**
      * @dev buyer and seller execute their LONG/SHORT positions
      */
-    await optionController
-      .connect(seller)
-      .execute(fullMarginOption.shortTokenId, fullMarginOption.amount, fullMarginOption.derivative);
+    await optionController.connect(seller).executeShort(fullMarginOption.amount);
 
-    await optionController
-      .connect(buyer)
-      .execute(fullMarginOption.longTokenId, fullMarginOption.amount, fullMarginOption.derivative);
+    await optionController.connect(buyer).executeLong(fullMarginOption.amount);
 
     const buyerBalanceAfter = await testToken.balanceOf(buyer.address);
     const sellerBalanceAfter = await testToken.balanceOf(seller.address);
