@@ -13,19 +13,11 @@ import { timeTravel, hardhatImpersonateAccount } from "../utils/hardhat";
 import { cast } from "../utils/bn";
 // types and constants
 import { TDerivativeOrder, TNamedSigners } from "../types";
-import {
-  ICore,
-  OptionCallSyntheticIdMock,
-  OptionController,
-  ERC20,
-  ITokenMinter,
-  AdminOracleController,
-} from "../typechain";
+import { OptionCallSyntheticIdMock, OptionController, ERC20, ITokenMinter, AdminOracleController } from "../typechain";
 import { daiAddress, daiRichEOA, opiumAddresses, SECONDS_40_MINS } from "../utils/constants";
 
 describe("Call Option example with DAI as a collateral", () => {
   let dai: ERC20,
-    core: ICore,
     adminOracleController: AdminOracleController,
     tokenMinter: ITokenMinter,
     optionCallMock: OptionCallSyntheticIdMock,
@@ -39,6 +31,9 @@ describe("Call Option example with DAI as a collateral", () => {
   before(async () => {
     namedSigners = (await ethers.getNamedSigners()) as TNamedSigners;
 
+    /**
+     * @dev deploys OptionController and AdminOracleController (see deploy/01_opium_controllers)
+     */
     await deployments.fixture(["OpiumControllers"]);
     const optionControllerInstance = await deployments.get("OptionController");
     optionController = <OptionController>(
@@ -49,16 +44,24 @@ describe("Call Option example with DAI as a collateral", () => {
       await ethers.getContractAt("AdminOracleController", adminOracleControllerInstance.address)
     );
 
+    /**
+     * @dev deploys TestToken and OptionCallSyntheticIdMock (see deploy/02_mocks)
+     */
     await deployments.fixture(["Mocks"]);
     const optionCallInstance = await deployments.get("OptionCallSyntheticIdMock");
     optionCallMock = <OptionCallSyntheticIdMock>(
       await ethers.getContractAt("OptionCallSyntheticIdMock", optionCallInstance.address)
     );
 
-    core = <ICore>await ethers.getContractAt("ICore", opiumAddresses.core);
+    /**
+     * @dev initializes Opium Protocol's TokenMinter contract using its mainnet address
+     */
     tokenMinter = <ITokenMinter>await ethers.getContractAt("ITokenMinter", opiumAddresses.tokenMinter);
     dai = <ERC20>await ethers.getContractAt("ERC20", daiAddress);
 
+    /**
+     * @dev definition of the derivative recipe
+     */
     const derivative = derivativeFactory({
       margin: cast(30),
       endTime: ~~(Date.now() / 1000) + SECONDS_40_MINS, // Now + 40 mins
@@ -69,9 +72,13 @@ describe("Call Option example with DAI as a collateral", () => {
       token: dai.address,
       syntheticId: optionCallMock.address,
     });
-    const hash = await core.getDerivativeHash(derivative);
+    const hash = getDerivativeHash(derivative);
     const longTokenId = calculateLongTokenId(hash);
     const shortTokenId = calculateShortTokenId(hash);
+
+    /**
+     * definition of the order of the previously declared derivative recipe
+     */
     fullMarginOption = {
       derivative,
       amount: 10,

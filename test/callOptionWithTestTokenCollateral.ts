@@ -13,7 +13,6 @@ import { cast } from "../utils/bn";
 // types and constants
 import { TDerivativeOrder, TNamedSigners } from "../types";
 import {
-  ICore,
   OptionCallSyntheticIdMock,
   OptionController,
   TestToken,
@@ -24,7 +23,6 @@ import { opiumAddresses, SECONDS_40_MINS } from "../utils/constants";
 
 describe("Call Option example with TEST token as a collateral", () => {
   let testToken: TestToken,
-    core: ICore,
     adminOracleController: AdminOracleController,
     tokenMinter: ITokenMinter,
     optionCallMock: OptionCallSyntheticIdMock,
@@ -37,6 +35,9 @@ describe("Call Option example with TEST token as a collateral", () => {
   before(async () => {
     namedSigners = (await ethers.getNamedSigners()) as TNamedSigners;
 
+    /**
+     * @dev deploys OptionController and AdminOracleController (see deploy/01_opium_controllers)
+     */
     await deployments.fixture(["OpiumControllers"]);
     const optionControllerInstance = await deployments.get("OptionController");
     optionController = <OptionController>(
@@ -47,6 +48,9 @@ describe("Call Option example with TEST token as a collateral", () => {
       await ethers.getContractAt("AdminOracleController", adminOracleControllerInstance.address)
     );
 
+    /**
+     * @dev deploys TestToken and OptionCallSyntheticIdMock (see deploy/02_mocks)
+     */
     await deployments.fixture(["Mocks"]);
     const testTokenInstance = await deployments.get("TestToken");
     testToken = <TestToken>await ethers.getContractAt("TestToken", testTokenInstance.address);
@@ -55,9 +59,14 @@ describe("Call Option example with TEST token as a collateral", () => {
       await ethers.getContractAt("OptionCallSyntheticIdMock", optionCallInstance.address)
     );
 
-    core = <ICore>await ethers.getContractAt("ICore", opiumAddresses.core);
+    /**
+     * @dev initializes Opium Protocol's TokenMinter contract using its mainnet address
+     */
     tokenMinter = <ITokenMinter>await ethers.getContractAt("ITokenMinter", opiumAddresses.tokenMinter);
 
+    /**
+     * @dev definition of the derivative recipe
+     */
     const derivative = derivativeFactory({
       margin: cast(30),
       endTime: ~~(Date.now() / 1000) + SECONDS_40_MINS, // Now + 40 mins
@@ -68,9 +77,13 @@ describe("Call Option example with TEST token as a collateral", () => {
       token: testToken.address,
       syntheticId: optionCallMock.address,
     });
-    const hash = await core.getDerivativeHash(derivative);
+    const hash = getDerivativeHash(derivative);
     const longTokenId = calculateLongTokenId(hash);
     const shortTokenId = calculateShortTokenId(hash);
+
+    /**
+     * definition of the order of the previously declared derivative recipe
+     */
     fullMarginOption = {
       derivative,
       amount: 8,
@@ -117,9 +130,6 @@ describe("Call Option example with TEST token as a collateral", () => {
       seller.address,
       fullMarginOption.shortTokenId,
     );
-
-    console.log("sellerPositionsBalance ", sellerPositionsBalance.toString());
-    console.log("buyerPositionsBalance ", buyerPositionsBalance.toString());
 
     expect(sellerPositionsBalance).to.be.eq(1);
     expect(buyerPositionsBalance).to.be.eq(1);
