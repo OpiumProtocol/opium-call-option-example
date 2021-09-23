@@ -10,13 +10,13 @@ import {
   getDerivativeHash,
 } from "../utils/derivatives";
 import { timeTravel, hardhatImpersonateAccount } from "../utils/hardhat";
-import { cast } from "../utils/bn";
+import { toBN } from "../utils/bn";
 // types and constants
 import { TDerivativeOrder, TNamedSigners } from "../types";
 import { OptionCallSyntheticIdMock, OptionController, ERC20, ITokenMinter, AdminOracleController } from "../typechain";
 import { daiAddress, daiRichEOA, opiumAddresses, SECONDS_40_MINS } from "../utils/constants";
 
-describe("Call Option example with DAI as a collateral", () => {
+describe("ETH Call Option example with DAI as a collateral and strike price less than market price at expiry", () => {
   let dai: ERC20,
     adminOracleController: AdminOracleController,
     tokenMinter: ITokenMinter,
@@ -63,10 +63,10 @@ describe("Call Option example with DAI as a collateral", () => {
      * @dev definition of the derivative recipe
      */
     const derivative = derivativeFactory({
-      margin: cast(30),
+      margin: toBN("120"), //required collateral denominated in TEST token
       endTime: ~~(Date.now() / 1000) + SECONDS_40_MINS, // Now + 40 mins
       params: [
-        cast(200), // Strike Price
+        toBN("3430"), // Strike Price 3430DAI
       ],
       oracleId: adminOracleController.address,
       token: dai.address,
@@ -82,7 +82,7 @@ describe("Call Option example with DAI as a collateral", () => {
     fullMarginOption = {
       derivative,
       amount: 10,
-      price: cast(200), // full margin profit
+      price: toBN("3190"), // hardcoded market price at expiry 3190DAI
       hash,
       longTokenId,
       shortTokenId,
@@ -150,13 +150,11 @@ describe("Call Option example with DAI as a collateral", () => {
     /**
      * @dev time-travel after the maturity of the derivative
      */
-    await timeTravel(SECONDS_40_MINS * 2);
+    await timeTravel(SECONDS_40_MINS + 100);
     /**
      * @dev manually pushes the current underlying's market price to the oracle contract
      */
-    await adminOracleController
-      .connect(oracle)
-      .__callback(fullMarginOption.derivative.endTime, fullMarginOption.price.div(2)); // Current price is half the strike price
+    await adminOracleController.connect(oracle).__callback(fullMarginOption.derivative.endTime, fullMarginOption.price);
 
     /**
      * @dev seller and buyer approve the execution of the derivative from a third-party (optionController)
@@ -188,11 +186,11 @@ describe("Call Option example with DAI as a collateral", () => {
     /**
      * @dev underlying's market price is less than the strike price so the seller receives the calculated payout
      */
-    expect(buyerPayout).to.be.equal(0);
-    expect(sellerPayout.mul(fullMarginOption.amount)).to.be.equal(
+    expect(buyerPayout, 'wrong buyer payout').to.be.equal(0);
+    expect(sellerPayout.mul(fullMarginOption.amount), 'wrong seller payout').to.be.equal(
       fullMarginOption.derivative.margin.mul(fullMarginOption.amount),
     );
-    expect(sellerBalanceAfter).to.be.equal(sellerBalanceBefore.add(sellerPayout.mul(fullMarginOption.amount)));
-    expect(buyerBalanceAfter).to.be.equal(buyerBalanceBefore.add(buyerPayout.mul(fullMarginOption.amount)));
+    expect(sellerBalanceAfter, 'wrong seller balance').to.be.equal(sellerBalanceBefore.add(sellerPayout.mul(fullMarginOption.amount)));
+    expect(buyerBalanceAfter, 'wrong buyer balance').to.be.equal(buyerBalanceBefore.add(buyerPayout.mul(fullMarginOption.amount)));
   });
 });

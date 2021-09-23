@@ -9,10 +9,11 @@ import {
   getDerivativeHash,
 } from "../utils/derivatives";
 import { timeTravel } from "../utils/hardhat";
-import { cast } from "../utils/bn";
+import { frac, fromBN, toBN } from "../utils/bn";
 // types and constants
 import { TDerivativeOrder, TNamedSigners } from "../types";
 import {
+  ICore,
   OptionCallSyntheticIdMock,
   OptionController,
   TestToken,
@@ -21,12 +22,13 @@ import {
 } from "../typechain";
 import { opiumAddresses, SECONDS_40_MINS } from "../utils/constants";
 
-describe("Call Option example with TEST token as a collateral", () => {
+describe("ETH Call Option example with TEST token as a collateral and strike price greater than market price at expiry", () => {
   let testToken: TestToken,
+    optionController: OptionController,
     adminOracleController: AdminOracleController,
-    tokenMinter: ITokenMinter,
     optionCallMock: OptionCallSyntheticIdMock,
-    optionController: OptionController;
+    tokenMinter: ITokenMinter,
+    core: ICore;
 
   let fullMarginOption: TDerivativeOrder;
 
@@ -60,18 +62,19 @@ describe("Call Option example with TEST token as a collateral", () => {
     );
 
     /**
-     * @dev initializes Opium Protocol's TokenMinter contract using its mainnet address
+     * @dev initializes Opium Protocol's TokenMinter and Core contracts using its mainnet address
      */
     tokenMinter = <ITokenMinter>await ethers.getContractAt("ITokenMinter", opiumAddresses.tokenMinter);
+    core = <ICore>await ethers.getContractAt("ICore", opiumAddresses.core);
 
     /**
      * @dev definition of the derivative recipe
      */
     const derivative = derivativeFactory({
-      margin: cast(30),
+      margin: toBN("30"), // required collateral denominated in TEST token
       endTime: ~~(Date.now() / 1000) + SECONDS_40_MINS, // Now + 40 mins
       params: [
-        cast(200), // Strike Price
+        toBN("3130"), // Strike Price 3130DAI
       ],
       oracleId: adminOracleController.address,
       token: testToken.address,
@@ -87,7 +90,7 @@ describe("Call Option example with TEST token as a collateral", () => {
     fullMarginOption = {
       derivative,
       amount: 8,
-      price: cast(231), // full margin profit
+      price: toBN("3390"), // hardcoded market price at expiry 3390DAI
       hash,
       longTokenId,
       shortTokenId,
@@ -147,14 +150,13 @@ describe("Call Option example with TEST token as a collateral", () => {
   });
 
   it("should execute the full margin option with the underlying's market price greater or equal than the strike price", async () => {
-    const { seller, buyer, oracle } = namedSigners;
+    const { seller, buyer, oracle, deployer } = namedSigners;
 
     /**
      * @dev time-travel after the maturity of the derivative
      */
-    await timeTravel(SECONDS_40_MINS * 2);
-
-    await adminOracleController.connect(oracle).__callback(fullMarginOption.derivative.endTime, fullMarginOption.price); // Current price is equal to strike price
+    await timeTravel(SECONDS_40_MINS + 10220);
+    await adminOracleController.connect(oracle).__callback(fullMarginOption.derivative.endTime, fullMarginOption.price);
 
     /**
      * @dev seller and buyer approve the execution of the derivative from a third-party (optionController)
@@ -173,24 +175,43 @@ describe("Call Option example with TEST token as a collateral", () => {
       fullMarginOption.price,
     );
 
+    const deployerBalanceBefore = await testToken.balanceOf(deployer.address);
+
     /**
      * @dev buyer and seller execute their LONG/SHORT positions
      */
-    await optionController.connect(seller).executeShort(fullMarginOption.amount);
-
     await optionController.connect(buyer).executeLong(fullMarginOption.amount);
+    await optionController.connect(seller).executeShort(fullMarginOption.amount);
 
     const buyerBalanceAfter = await testToken.balanceOf(buyer.address);
     const sellerBalanceAfter = await testToken.balanceOf(seller.address);
 
     /**
+     * if specified, the derivative author takes a commission for creating the derivative
+     * the commission is taken from the winning party's payout
+     *
+     */
+    const derivativeAuthorFee = frac(buyerBalanceBefore.add(buyerPayout.mul(fullMarginOption.amount)), "0.25", "100");
+    // fee * OPIUM_COMMISSION_PART / OPIUM_COMMISSION_BASE
+    const opiumFee = frac(derivativeAuthorFee, "1", "10");
+    await core.withdrawFee(fullMarginOption.derivative.token);
+
+    const deployerBalanceAfter = await testToken.balanceOf(deployer.address);
+    /**
      * @dev underlying's market price is equal to the strike price so the buyer receives the calculated payout
      */
-    expect(buyerPayout.mul(fullMarginOption.amount)).to.be.equal(
+    expect(buyerPayout.mul(fullMarginOption.amount), "wrong buyer payout").to.be.equal(
       fullMarginOption.derivative.margin.mul(fullMarginOption.amount),
     );
-    expect(sellerPayout).to.be.equal(0);
-    expect(sellerBalanceAfter).to.be.equal(sellerBalanceBefore.add(sellerPayout.mul(fullMarginOption.amount)));
-    expect(buyerBalanceAfter).to.be.equal(buyerBalanceBefore.add(buyerPayout.mul(fullMarginOption.amount)));
+    expect(sellerPayout, "wrong seller payout").to.be.equal(0);
+    expect(sellerBalanceAfter, "wrong seller balance").to.be.equal(
+      sellerBalanceBefore.add(sellerPayout.mul(fullMarginOption.amount)),
+    );
+    expect(buyerBalanceAfter, "wrong buyer balance").to.be.equal(
+      buyerBalanceBefore.add(buyerPayout.mul(fullMarginOption.amount)).sub(derivativeAuthorFee),
+    );
+    expect(deployerBalanceAfter, "wrong author balance").to.be.equal(
+      deployerBalanceBefore.add(derivativeAuthorFee).sub(opiumFee),
+    );
   });
 });

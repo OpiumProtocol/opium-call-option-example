@@ -27,4 +27,6 @@ interface ICore {
         external
         pure
         returns (bytes32 derivativeHash);
+
+    function withdrawFee(address _tokenAddress) external;
 }

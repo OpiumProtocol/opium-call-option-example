@@ -4,7 +4,7 @@ import { BigNumber } from "@ethersproject/bignumber";
 // types and constants
 import { zeroAddress } from "./constants";
 import { TDerivative } from "../types";
-import { cast } from "./bn";
+import { toBN } from "./bn";
 
 export const calculatePortfolioId = (tokenIds: number[], tokenRatio: number[]): string => {
   return utils.solidityKeccak256(["uint256[]", "uint256[]"], [tokenIds, tokenRatio]);
@@ -20,7 +20,7 @@ export const calculateShortTokenId = (derivativeHash: string): BigNumber => {
 
 export const derivativeFactory = (derivative: Partial<TDerivative>): TDerivative => {
   const def = {
-    margin: cast(0),
+    margin: toBN("0"),
     endTime: 0,
     params: [],
     oracleId: zeroAddress,

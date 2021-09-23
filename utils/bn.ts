@@ -9,6 +9,6 @@ export const fromBN = (value: BigNumber): string => {
   return ethers.utils.formatEther(value);
 };
 
-export const cast = (x: number | BigNumber): BigNumber => {
-  return BigNumber.from(x);
+export const frac = (x: BigNumber, n: string, d: string): BigNumber => {
+  return x.mul(toBN(n)).div(toBN(d));
 };

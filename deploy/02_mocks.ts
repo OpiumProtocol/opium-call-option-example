@@ -14,7 +14,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   });
 
   await deploy("OptionCallSyntheticIdMock", {
-    from: oracle,
+    from: deployer,
     log: true,
   });
 };
