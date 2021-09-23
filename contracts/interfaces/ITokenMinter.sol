@@ -7,4 +7,6 @@ interface ITokenMinter {
     function balanceOf(address user, uint256 tokenId) external view returns (uint256);
 
     function balanceOf(address) external view returns (uint256);
+
+    function ownerOf(uint256 _tokenId) external view returns (address);
 }

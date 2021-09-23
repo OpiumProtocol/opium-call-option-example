@@ -15,9 +15,11 @@ import { toBN } from "../utils/bn";
 import { TDerivativeOrder, TNamedSigners } from "../types";
 import { OptionCallSyntheticIdMock, OptionController, ERC20, ITokenMinter, AdminOracleController } from "../typechain";
 import { daiAddress, daiRichEOA, opiumAddresses, SECONDS_40_MINS } from "../utils/constants";
+import { IERC721O } from "../typechain/IERC721O";
 
 describe("ETH Call Option example with DAI as a collateral and strike price less than market price at expiry", () => {
   let dai: ERC20,
+    longToken: IERC721O,
     adminOracleController: AdminOracleController,
     tokenMinter: ITokenMinter,
     optionCallMock: OptionCallSyntheticIdMock,
@@ -63,7 +65,7 @@ describe("ETH Call Option example with DAI as a collateral and strike price less
      * @dev definition of the derivative recipe
      */
     const derivative = derivativeFactory({
-      margin: toBN("120"), //required collateral denominated in TEST token
+      margin: toBN("40"), //required collateral denominated in DAI token
       endTime: ~~(Date.now() / 1000) + SECONDS_40_MINS, // Now + 40 mins
       params: [
         toBN("3430"), // Strike Price 3430DAI
@@ -90,6 +92,8 @@ describe("ETH Call Option example with DAI as a collateral and strike price less
 
     await hardhatImpersonateAccount(daiRichEOA);
     optionSeller = ethers.provider.getSigner(daiRichEOA);
+    const { buyer } = namedSigners;
+    await dai.connect(optionSeller).transferFrom(daiRichEOA, buyer.address, 100);
   });
 
   it("sets the current derivative and should return a matching derivative hash", async () => {
@@ -108,7 +112,35 @@ describe("ETH Call Option example with DAI as a collateral and strike price less
     await dai
       .connect(optionSeller)
       .approve(optionController.address, fullMarginOption.derivative.margin.mul(fullMarginOption.amount));
-    await optionController.connect(optionSeller).create(fullMarginOption.amount, [buyer.address, daiRichEOA]);
+
+    /**
+     * @dev optionSeller deposits the required collateral and receives a market neutral position (LONG/SHORT)
+     */
+    await optionController.connect(optionSeller).create(fullMarginOption.amount, [daiRichEOA, daiRichEOA]);
+    /**
+     * @dev check that the seller has an equal amount of LONG and SHORT positions
+     */
+    const sellerPositionsLongBalanceMarketNeutral = await tokenMinter["balanceOf(address,uint256)"](
+      daiRichEOA,
+      fullMarginOption.longTokenId,
+    );
+    const sellerPositionsShortBalanceMarketNeutral = await tokenMinter["balanceOf(address,uint256)"](
+      daiRichEOA,
+      fullMarginOption.shortTokenId,
+    );
+    expect(sellerPositionsLongBalanceMarketNeutral, "wrong seller market neutral position").to.be.eq(
+      sellerPositionsShortBalanceMarketNeutral,
+    );
+    /**
+     * @dev seller sells LONG positions to buyer for 20 DAI
+     * NOTICE that this is just a mock workflow and in a real-world codebase we'd have an escrow/matching contract
+     */
+    const longTokenIdAddress = await tokenMinter.ownerOf(fullMarginOption.longTokenId);
+    longToken = <IERC721O>await ethers.getContractAt("IERC721O", longTokenIdAddress);
+    await longToken
+      .connect(optionSeller)
+      .transfer(buyer.address, fullMarginOption.longTokenId, fullMarginOption.amount);
+    await dai.connect(buyer).transfer(daiRichEOA, 20);
 
     const buyerPositionsBalance = await tokenMinter["balanceOf(address)"](buyer.address);
     const buyerPositionsLongBalance = await tokenMinter["balanceOf(address,uint256)"](
@@ -177,7 +209,6 @@ describe("ETH Call Option example with DAI as a collateral and strike price less
      * @dev buyer and seller execute their LONG/SHORT positions
      */
     await optionController.connect(optionSeller).executeShort(fullMarginOption.amount);
-
     await optionController.connect(buyer).executeLong(fullMarginOption.amount);
 
     const buyerBalanceAfter = await dai.balanceOf(buyer.address);
@@ -186,11 +217,15 @@ describe("ETH Call Option example with DAI as a collateral and strike price less
     /**
      * @dev underlying's market price is less than the strike price so the seller receives the calculated payout
      */
-    expect(buyerPayout, 'wrong buyer payout').to.be.equal(0);
-    expect(sellerPayout.mul(fullMarginOption.amount), 'wrong seller payout').to.be.equal(
+    expect(buyerPayout, "wrong buyer payout").to.be.equal(0);
+    expect(sellerPayout.mul(fullMarginOption.amount), "wrong seller payout").to.be.equal(
       fullMarginOption.derivative.margin.mul(fullMarginOption.amount),
     );
-    expect(sellerBalanceAfter, 'wrong seller balance').to.be.equal(sellerBalanceBefore.add(sellerPayout.mul(fullMarginOption.amount)));
-    expect(buyerBalanceAfter, 'wrong buyer balance').to.be.equal(buyerBalanceBefore.add(buyerPayout.mul(fullMarginOption.amount)));
+    expect(sellerBalanceAfter, "wrong seller balance").to.be.equal(
+      sellerBalanceBefore.add(sellerPayout.mul(fullMarginOption.amount)),
+    );
+    expect(buyerBalanceAfter, "wrong buyer balance").to.be.equal(
+      buyerBalanceBefore.add(buyerPayout.mul(fullMarginOption.amount)),
+    );
   });
 });

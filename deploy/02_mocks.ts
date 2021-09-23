@@ -5,7 +5,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployments, getNamedAccounts } = hre;
   const { deploy } = deployments;
 
-  const { deployer, oracle } = await getNamedAccounts();
+  const { deployer, seller } = await getNamedAccounts();
 
   await deploy("TestToken", {
     from: deployer,
@@ -14,7 +14,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   });
 
   await deploy("OptionCallSyntheticIdMock", {
-    from: deployer,
+    from: seller,
     log: true,
   });
 };

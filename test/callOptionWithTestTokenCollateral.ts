@@ -9,7 +9,7 @@ import {
   getDerivativeHash,
 } from "../utils/derivatives";
 import { timeTravel } from "../utils/hardhat";
-import { frac, fromBN, toBN } from "../utils/bn";
+import { frac, toBN } from "../utils/bn";
 // types and constants
 import { TDerivativeOrder, TNamedSigners } from "../types";
 import {
@@ -20,10 +20,12 @@ import {
   ITokenMinter,
   AdminOracleController,
 } from "../typechain";
+import { IERC721O } from "../typechain/IERC721O";
 import { opiumAddresses, SECONDS_40_MINS } from "../utils/constants";
 
 describe("ETH Call Option example with TEST token as a collateral and strike price greater than market price at expiry", () => {
   let testToken: TestToken,
+    longToken: IERC721O,
     optionController: OptionController,
     adminOracleController: AdminOracleController,
     optionCallMock: OptionCallSyntheticIdMock,
@@ -95,6 +97,9 @@ describe("ETH Call Option example with TEST token as a collateral and strike pri
       longTokenId,
       shortTokenId,
     };
+    const { seller, buyer } = namedSigners;
+    await testToken.transfer(seller.address, toBN("400"));
+    await testToken.transfer(buyer.address, toBN("400"));
   });
 
   it("sets the current derivative and should return a matching derivative hash", async () => {
@@ -104,16 +109,41 @@ describe("ETH Call Option example with TEST token as a collateral and strike pri
   });
 
   it("should successfully create a full margin option", async () => {
-    const { deployer, seller, buyer } = namedSigners;
+    const { seller, buyer } = namedSigners;
 
     /**
      * @dev approves an amount of DAI equal to the specified margin * amount of derivatives being minted
      * @dev the allowance will be moved to the Opium tokenSpender contract via the optionController contract
      */
     await testToken
-      .connect(deployer)
+      .connect(seller)
       .approve(optionController.address, fullMarginOption.derivative.margin.mul(fullMarginOption.amount));
-    await optionController.connect(deployer).create(fullMarginOption.amount, [buyer.address, seller.address]);
+    /**
+     * @dev optionSeller deposits the required collateral and receives a market neutral position (LONG/SHORT)
+     */
+    await optionController.connect(seller).create(fullMarginOption.amount, [seller.address, seller.address]);
+    /**
+     * @dev check that the seller has an equal amount of LONG and SHORT positions
+     */
+    const sellerPositionsLongBalanceMarketNeutral = await tokenMinter["balanceOf(address,uint256)"](
+      seller.address,
+      fullMarginOption.longTokenId,
+    );
+    const sellerPositionsShortBalanceMarketNeutral = await tokenMinter["balanceOf(address,uint256)"](
+      seller.address,
+      fullMarginOption.shortTokenId,
+    );
+    expect(sellerPositionsLongBalanceMarketNeutral, "wrong seller market neutral position").to.be.eq(
+      sellerPositionsShortBalanceMarketNeutral,
+    );
+    /**
+     * @dev seller sells LONG positions to buyer for 10 TEST token
+     * NOTICE that this is just a mock workflow and in a real-world codebase we'd have an escrow/matching contract
+     */
+    const longTokenIdAddress = await tokenMinter.ownerOf(fullMarginOption.longTokenId);
+    longToken = <IERC721O>await ethers.getContractAt("IERC721O", longTokenIdAddress);
+    await longToken.connect(seller).transfer(buyer.address, fullMarginOption.longTokenId, fullMarginOption.amount);
+    await testToken.connect(buyer).transfer(seller.address, 10);
 
     const buyerPositionsBalance = await tokenMinter["balanceOf(address)"](buyer.address);
     const buyerPositionsLongBalance = await tokenMinter["balanceOf(address,uint256)"](
@@ -150,7 +180,7 @@ describe("ETH Call Option example with TEST token as a collateral and strike pri
   });
 
   it("should execute the full margin option with the underlying's market price greater or equal than the strike price", async () => {
-    const { seller, buyer, oracle, deployer } = namedSigners;
+    const { seller, buyer, oracle } = namedSigners;
 
     /**
      * @dev time-travel after the maturity of the derivative
@@ -175,8 +205,6 @@ describe("ETH Call Option example with TEST token as a collateral and strike pri
       fullMarginOption.price,
     );
 
-    const deployerBalanceBefore = await testToken.balanceOf(deployer.address);
-
     /**
      * @dev buyer and seller execute their LONG/SHORT positions
      */
@@ -191,12 +219,12 @@ describe("ETH Call Option example with TEST token as a collateral and strike pri
      * the commission is taken from the winning party's payout
      *
      */
-    const derivativeAuthorFee = frac(buyerBalanceBefore.add(buyerPayout.mul(fullMarginOption.amount)), "0.25", "100");
+    const derivativeAuthorFee = frac(buyerPayout.mul(fullMarginOption.amount), "0.25", "100");
     // fee * OPIUM_COMMISSION_PART / OPIUM_COMMISSION_BASE
     const opiumFee = frac(derivativeAuthorFee, "1", "10");
-    await core.withdrawFee(fullMarginOption.derivative.token);
+    await core.connect(seller).withdrawFee(fullMarginOption.derivative.token);
 
-    const deployerBalanceAfter = await testToken.balanceOf(deployer.address);
+    const sellerBalanceAfterFeeWithdrawal = await testToken.balanceOf(seller.address);
     /**
      * @dev underlying's market price is equal to the strike price so the buyer receives the calculated payout
      */
@@ -208,10 +236,10 @@ describe("ETH Call Option example with TEST token as a collateral and strike pri
       sellerBalanceBefore.add(sellerPayout.mul(fullMarginOption.amount)),
     );
     expect(buyerBalanceAfter, "wrong buyer balance").to.be.equal(
-      buyerBalanceBefore.add(buyerPayout.mul(fullMarginOption.amount)).sub(derivativeAuthorFee),
+      buyerBalanceBefore.add(buyerPayout.mul(fullMarginOption.amount).sub(derivativeAuthorFee)),
     );
-    expect(deployerBalanceAfter, "wrong author balance").to.be.equal(
-      deployerBalanceBefore.add(derivativeAuthorFee).sub(opiumFee),
+    expect(sellerBalanceAfterFeeWithdrawal, "wrong derivative author balance").to.be.equal(
+      sellerBalanceAfter.add(derivativeAuthorFee).sub(opiumFee),
     );
   });
 });
