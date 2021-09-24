@@ -61,7 +61,8 @@ contract OptionController is LibDerivative, Ownable {
         );
         uint256 requiredMargin = _computeMarginRequirement(buyerMargin, sellerMargin, _amount);
 
-        IERC20(derivative.token).transferFrom(msg.sender, address(this), requiredMargin);
+        IERC20(derivative.token).safeTransferFrom(msg.sender, address(this), requiredMargin);
+        IERC20(derivative.token).approve(tokenSpender, 0);
         IERC20(derivative.token).approve(tokenSpender, requiredMargin);
         core.create(derivative, _amount, _addresses);
     }
