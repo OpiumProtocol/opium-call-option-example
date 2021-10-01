@@ -19,6 +19,9 @@ After cloning the repository, run the following commands:
 2. push data (underlying's current market price) into the oracle
 3. time-travel after the option's maturity date and execute the option contract
 
+### Tutorial
+Read more on [the tutorial published on medium](https://medium.com/opium-network/build-a-call-option-on-opium-432c055fcbfa)
+
 ## License
 
 [MIT](https://choosealicense.com/licenses/mit/)
