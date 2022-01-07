@@ -1,9 +1,9 @@
 export const opiumAddresses = {
-  registry: "0x0800c19ecec5712040a77e19f27d1c44c47ee174",
-  core: "0xa809d9d82a59166a61b86b7b89feb9c47739a3e1",
-  tokenMinter: "0x212fe617ba1641cc84302687a4fbc83f13584a8b",
-  oracleAggregator: "0xB69890912E40A7849fCA058bb118Cfe7d70932c4",
-  tokenSpender: "0x8bd75f96EfA089aEcf6Ac4CD0B671e2428f4B2af",
+  registry: "0x7f5F4087006BA4F4985b32f9d1079Ee2F8594Af8",
+  core: "0xd60f0a53c7e97f78fe4ac9013f5749920c601494",
+  tokenMinter: "0x35aab5c69cea76e643fd3287ac9523bd670445b2",
+  oracleAggregator: "0xb69890912e40a7849fca058bb118cfe7d70932c4",
+  tokenSpender: "0x8bd75f96efa089aecf6ac4cd0b671e2428f4b2af",
   libPosition: "0x56c54b408c44B12f6c9219C9c73Fcda4E783FC20",
 };
 
