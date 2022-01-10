@@ -221,7 +221,7 @@ describe("ETH Call Option example with TEST token as a collateral and strike pri
      */
     const derivativeAuthorFee = frac(buyerPayout.mul(fullMarginOption.amount), "0.25", "100");
     // fee * OPIUM_COMMISSION_PART / OPIUM_COMMISSION_BASE
-    const opiumFee = frac(derivativeAuthorFee, "1", "10");
+    // const opiumFee = frac(derivativeAuthorFee, "1", "10");
     await core.connect(seller).withdrawFee(fullMarginOption.derivative.token);
 
     const sellerBalanceAfterFeeWithdrawal = await testToken.balanceOf(seller.address);
@@ -239,7 +239,7 @@ describe("ETH Call Option example with TEST token as a collateral and strike pri
       buyerBalanceBefore.add(buyerPayout.mul(fullMarginOption.amount).sub(derivativeAuthorFee)),
     );
     expect(sellerBalanceAfterFeeWithdrawal, "wrong derivative author balance").to.be.equal(
-      sellerBalanceAfter.add(derivativeAuthorFee).sub(opiumFee),
+      sellerBalanceAfter.add(derivativeAuthorFee),
     );
   });
 });
